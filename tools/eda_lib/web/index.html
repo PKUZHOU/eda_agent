@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>EDA Agent · 运行监控</title>
   <link rel="stylesheet" href="/style.css">
+  <script src="/flow.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="brand-icon" aria-hidden="true">▦</span><div><strong>EDA Agent</strong><span class="brand-caption">运行监控 / RUN MONITOR</span></div></div>
+    <div class="brand"><span class="brand-icon" aria-hidden="true">▦</span><div><strong>EDA Agent</strong><span class="brand-caption">流程诊断 / FLOW DIAGNOSTICS</span></div></div>
     <div class="top-controls"><span class="local-tag">本机 · 只读</span><span id="connection" class="connection waiting" role="status">连接中</span><button id="refresh" class="button" type="button">刷新</button><button id="pause" class="button secondary" type="button">暂停刷新</button></div>
   </header>
   <div id="connection-error" class="connection-error" role="alert" hidden></div>
@@ -25,22 +26,32 @@
       <section id="empty" class="empty"><span class="empty-symbol" aria-hidden="true">▦</span><h1>等待运行数据</h1><p id="empty-message">正在连接执行端，读取任务状态。</p><code>python3 tools/eda.py submit --profile … --flow …</code></section>
       <div id="detail" hidden>
         <section class="run-heading">
-          <div><div class="eyebrow">RUN OVERVIEW</div><h1 id="run-title"></h1><p id="run-meta" class="muted"></p></div>
+          <div><div class="eyebrow">FLOW OVERVIEW</div><h1 id="run-title"></h1><p id="run-meta" class="muted"></p></div>
           <div class="run-heading-controls"><span id="run-status" class="badge"></span><label for="attempt">执行记录</label><select id="attempt" aria-label="选择执行记录"></select></div>
         </section>
-        <section class="metrics" aria-label="运行指标">
-          <article class="metric"><span class="metric-label">当前阶段</span><strong id="current-stage" class="stage-value">—</strong><span id="stage-progress" class="metric-note">等待执行</span></article>
-          <article class="metric"><span class="metric-label">本次耗时</span><strong id="elapsed">—</strong><span id="budget" class="metric-note">—</span></article>
-          <article class="metric"><span class="metric-label">工具 CPU</span><strong id="cpu">—</strong><span id="cpu-note" class="metric-note">100% 对应一个逻辑核</span><svg class="spark cpu" viewBox="0 0 240 36" preserveAspectRatio="none" aria-label="CPU 采样趋势"><polyline id="cpu-chart" points=""></polyline></svg></article>
-          <article class="metric"><span id="memory-label" class="metric-label">工具内存 · RSS</span><strong id="memory">—</strong><span id="memory-note" class="metric-note">所属进程组，近似值</span><svg class="spark memory" viewBox="0 0 240 36" preserveAspectRatio="none" aria-label="内存采样趋势"><polyline id="memory-chart" points=""></polyline></svg></article>
+        <section class="panel stages-panel flow-panel">
+          <div class="panel-heading"><div><h2>工程流程</h2><span class="muted">从综合到物理实现与时序检查 · 点击阶段筛选问题</span></div><span id="stage-progress" class="count"></span></div>
+          <div id="stages" class="stages flow-rail" aria-label="流程依赖关系"></div>
         </section>
-        <section class="panel stages-panel"><div class="panel-heading"><h2>阶段进度</h2><span class="muted">按实际阶段验收显示</span></div><div id="stages" class="stages"></div></section>
+        <section class="metrics diagnostic-metrics" aria-label="流程统计">
+          <article class="metric"><span class="metric-label">Error / Fatal</span><strong id="error-count" class="error-number">—</strong><span id="error-note" class="metric-note">主流程日志中的消息次数</span></article>
+          <article class="metric"><span class="metric-label">Warning</span><strong id="warning-count" class="warning-number">—</strong><span id="warning-note" class="metric-note">按完整日志累计，重复消息计次数</span></article>
+          <article class="metric"><span class="metric-label">当前阶段</span><strong id="current-stage" class="stage-value">—</strong><span id="scan-progress" class="metric-note">等待统计</span></article>
+          <article class="metric"><span class="metric-label">本次耗时</span><strong id="elapsed">—</strong><span id="budget" class="metric-note">—</span></article>
+        </section>
+        <section class="panel distribution-panel"><div class="panel-heading"><div><h2>各阶段消息分布</h2><span class="muted">主流程日志 · Error 包含 Fatal · 未生成日志显示未知</span></div><div class="chart-legend"><span class="error-legend">Error</span><span class="warning-legend">Warning</span></div></div><div id="message-chart" class="message-chart" aria-label="各阶段 error 和 warning 数量"></div></section>
+        <section class="panel issues-panel">
+          <div class="panel-heading"><div><h2>问题明细</h2><span id="issue-summary" class="muted">按阶段、级别、消息代码归类</span></div><button id="clear-issues" class="button secondary" type="button">清除筛选</button></div>
+          <div class="issue-filters"><label>阶段<select id="issue-stage"></select></label><label>级别<select id="issue-level"><option value="issues">Error + Warning</option><option value="error">Error / Fatal</option><option value="warning">Warning</option><option value="info">Information</option><option value="all">全部消息</option></select></label><label>来源<select id="issue-kind"><option value="main">主流程</option><option value="restore">Checkpoint 恢复校验</option><option value="all">全部来源</option></select></label><label class="issue-search-label">搜索<input id="issue-search" type="search" placeholder="消息代码或内容…"></label></div>
+          <div class="table-scroll"><table class="issue-table"><thead><tr><th>级别 / 阶段</th><th>消息代码</th><th>次数</th><th>消息示例</th><th>原始日志</th></tr></thead><tbody id="issue-rows"></tbody></table></div>
+        </section>
         <section id="reason-panel" class="reason-panel" hidden><strong>需要关注</strong><div id="reasons"></div></section>
         <section class="evidence-strip"><div><span id="validity" class="evidence-label">—</span><span id="qor" class="evidence-label">—</span></div><p>阶段检查通过不代表 signoff；QoR 比较还需要完整且一致的分析口径。</p></section>
         <section class="panel log-panel">
-          <div class="panel-heading log-heading"><div><h2>运行日志</h2><span id="log-meta" class="muted">最新尾部 · 最大 64 KiB</span></div><div class="log-controls"><label class="sr-only" for="log-select">选择日志</label><select id="log-select"></select><label class="follow"><input id="follow" type="checkbox" checked> 跟随日志</label><button id="copy-log" class="button secondary" type="button">复制</button></div></div>
+          <div class="panel-heading log-heading"><div><h2>运行日志</h2><span id="log-meta" class="muted">最新尾部 · 最大 64 KiB</span></div><div class="log-controls"><label class="sr-only" for="log-select">选择日志</label><label class="sr-only" for="log-attempt">日志执行记录</label><select id="log-attempt"></select><select id="log-select"></select><button id="log-tail" class="button secondary" type="button">回到最新</button><label class="follow"><input id="follow" type="checkbox" checked> 跟随日志</label><button id="copy-log" class="button secondary" type="button">复制</button></div></div>
           <pre id="log" tabindex="0" aria-label="日志内容">等待日志…</pre>
         </section>
+        <details class="panel resource-details"><summary>资源采样 <span class="muted">CPU / 内存</span></summary><section class="metrics resource-metrics"><article class="metric"><span class="metric-label">工具 CPU</span><strong id="cpu">—</strong><span id="cpu-note" class="metric-note">100% 对应一个逻辑核</span><svg class="spark cpu" viewBox="0 0 240 36" preserveAspectRatio="none" aria-label="CPU 采样趋势"><polyline id="cpu-chart" points=""></polyline></svg></article><article class="metric"><span id="memory-label" class="metric-label">工具内存 · RSS</span><strong id="memory">—</strong><span id="memory-note" class="metric-note">所属进程组，近似值</span><svg class="spark memory" viewBox="0 0 240 36" preserveAspectRatio="none" aria-label="内存采样趋势"><polyline id="memory-chart" points=""></polyline></svg></article></section></details>
       </div>
       <footer class="main-footer"><span>DC · ICC2 · PrimeTime</span><span>关闭此页面不会停止 EDA 任务</span></footer>
     </main>

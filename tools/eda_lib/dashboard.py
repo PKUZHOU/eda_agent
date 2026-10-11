@@ -8,6 +8,7 @@ from socketserver import ThreadingMixIn
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
+from eda_lib.diagnostics import DiagnosticStore
 
 ASSETS = Path(__file__).resolve().parent / 'web'
 
@@ -21,9 +22,10 @@ class SnapshotCache:
         self.lock = threading.Lock()
         self.cache = OrderedDict()
         self.samples = OrderedDict()
+        self.diagnostics = DiagnosticStore()
 
-    def snapshot(self, run_id=None, attempt=None, log=None):
-        key = (run_id, attempt, log)
+    def snapshot(self, run_id=None, attempt=None, log=None, log_attempt=None, log_offset=None):
+        key = (run_id, attempt, log, log_attempt, log_offset)
         with self.lock:
             previous = self.cache.get(key)
             if previous and time.monotonic() - previous[0] < self.refresh:
@@ -33,12 +35,15 @@ class SnapshotCache:
                         'refresh_seconds': self.refresh, 'error': None}
             try:
                 result = self.fetch({'action': 'monitor', 'profile': self.profile,
-                                     'run_id': run_id, 'attempt': attempt, 'log': log})
+                                     'run_id': run_id, 'attempt': attempt, 'log': log,
+                                     'log_attempt': log_attempt, 'log_offset': log_offset,
+                                     'diagnostic_cursors': self.diagnostics.cursors()})
                 if not result['ok']:
                     raise ValueError(result.get('error', {}).get('message', 'Monitor request failed'))
                 data = result['result']
                 selected = data.get('selected')
                 if selected:
+                    self.diagnostics.update(selected)
                     resources = selected['resources']
                     sample_key = (selected['run_id'], selected['attempt'])
                     samples = self.samples.setdefault(sample_key, deque(maxlen=120))
@@ -113,6 +118,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         assets = {'/': ('index.html', 'text/html; charset=utf-8'),
                   '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
+                  '/flow.js': ('flow.js', 'text/javascript; charset=utf-8'),
                   '/style.css': ('style.css', 'text/css; charset=utf-8')}
         if parsed.path in assets:
             filename, kind = assets[parsed.path]
@@ -123,14 +129,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if len(parsed.query) > 1024:
                 raise ValueError('Query is too long')
             params = parse_qs(parsed.query)
-            if set(params) - {'run_id', 'attempt', 'log'} or any(len(v) != 1 for v in params.values()):
+            if set(params) - {'run_id', 'attempt', 'log', 'log_attempt', 'log_offset'} or any(len(v) != 1 for v in params.values()):
                 raise ValueError('Unknown or repeated query parameter')
             run_id = params.get('run_id', [None])[0]
             log = params.get('log', [None])[0]
             attempt = int(params['attempt'][0]) if params.get('attempt') else None
+            log_attempt = int(params['log_attempt'][0]) if params.get('log_attempt') else None
+            log_offset = int(params['log_offset'][0]) if params.get('log_offset') else None
             if attempt is not None and attempt < 1:
                 raise ValueError('attempt must be positive')
-            result = self.server.cache.snapshot(run_id, attempt, log)
+            if log_attempt is not None and log_attempt < 1 or log_offset is not None and log_offset < 0:
+                raise ValueError('Invalid log position')
+            result = self.server.cache.snapshot(run_id, attempt, log, log_attempt, log_offset)
             self.send_data(200, json.dumps(result, ensure_ascii=False, allow_nan=False).encode())
         except (ValueError, KeyError, TypeError) as error:
             self.send_data(400, json.dumps({'error': str(error)}).encode())

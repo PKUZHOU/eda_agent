@@ -80,7 +80,7 @@ class DashboardHTTPTests(unittest.TestCase):
         self.thread.join()
 
     def test_assets_and_snapshot(self):
-        for path in ('/', '/app.js', '/style.css'):
+        for path in ('/', '/app.js', '/flow.js', '/style.css'):
             with self.opener.open(self.url + path) as response:
                 self.assertEqual(response.status, 200)
                 self.assertGreater(len(response.read()), 100)
@@ -180,6 +180,21 @@ class MonitorRuntimeTests(unittest.TestCase):
         self.assertEqual(selected['attempt'], 1)
         self.assertEqual(selected['attempts'], [1, 2])
         self.assertEqual(selected['status'], 'completed')
+
+    def test_message_context_can_target_inherited_attempt(self):
+        content = 'head\n' * 16000 + 'Warning: a historical message (TEST-1)\n' + 'tail\n' * 16000
+        target = len(('head\n' * 16000).encode())
+        (self.attempt / 'logs/route.log').write_text(content)
+        self.state.update(attempt=2)
+        runtime.atomic(self.run / 'state.json', self.state)
+        runtime.atomic(self.run / 'attempts/2/state.json', self.state)
+        selected = self.snapshot(log_attempt=1, log='route.log', log_offset=target)['selected']
+        self.assertEqual(selected['attempt'], 2)
+        self.assertEqual(selected['log_attempt'], 1)
+        log = selected['log']
+        self.assertFalse(log['at_tail'])
+        self.assertTrue(log['text'].splitlines()[log['highlight_line']].startswith('Warning:'))
+        self.assertLessEqual(len(log['text'].encode()), 65536)
 
     def test_empty_run_root(self):
         result = runtime.monitor_snapshot({'profile': {'run_root': str(self.root / 'missing')}})

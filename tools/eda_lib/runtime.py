@@ -875,6 +875,47 @@ def monitor_summary(state):
     return {name: state.get(name) for name in fields}
 
 
+def diagnostic_chunks(run, stages, cursors):
+    chunks = []
+    budget = 4 * 1024 * 1024
+    for stage in stages:
+        for kind in ('main', 'restore'):
+            filename = stage['id'] + ('.restore.log' if kind == 'restore' else '.log')
+            key = '{}/{}/{}/{}'.format(run.name, stage['attempt'], stage['id'], kind)
+            chunk = {'key': key, 'stage': stage['id'], 'attempt': stage['attempt'], 'kind': kind,
+                     'log': filename, 'available': False}
+            chunks.append(chunk)
+            path = within(run, 'attempts/{}/logs/{}'.format(stage['attempt'], filename))
+            if not path.is_file():
+                continue
+            with path.open('rb') as stream:
+                stat = os.fstat(stream.fileno())
+                identity_key = '{}:{}'.format(stat.st_dev, stat.st_ino)
+                cursor = cursors.get(key, {})
+                offset = cursor.get('end_offset', 0)
+                if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+                    raise RequestError('Invalid diagnostic cursor')
+                reset = cursor.get('identity') != identity_key or offset > stat.st_size
+                if not reset and offset:
+                    stream.seek(max(0, offset - 256))
+                    anchor = hashlib.sha256(stream.read(min(offset, 256))).hexdigest()
+                    reset = (anchor != cursor.get('anchor') or
+                             (offset == stat.st_size and cursor.get('mtime_ns') != stat.st_mtime_ns))
+                if reset:
+                    offset = 0
+                stream.seek(offset)
+                data = stream.read(min(2 * 1024 * 1024, budget, max(0, stat.st_size - offset)))
+                end = offset + len(data)
+                stream.seek(max(0, end - 256))
+                anchor = hashlib.sha256(stream.read(min(end, 256))).hexdigest()
+            budget -= len(data)
+            sealed = stage['execution_done'] if kind == 'main' else stage['status'] not in ('running', 'pending')
+            chunk.update(available=True, identity=identity_key, size=stat.st_size, reset=reset,
+                         start_offset=offset, end_offset=end, anchor=anchor, mtime_ns=stat.st_mtime_ns,
+                         sealed=sealed, data_base64=base64.b64encode(data).decode('ascii'))
+    return chunks
+
+
 def monitor_snapshot(request):
     root = Path(request['profile']['run_root'])
     if not root.is_absolute():
@@ -913,7 +954,7 @@ def monitor_snapshot(request):
         record = records.get(spec['id'])
         item = {'id': spec['id'], 'tool': spec.get('tool', 'command'), 'status': 'pending',
                 'attempt': attempt, 'wall_seconds': None, 'peak_rss_bytes': None,
-                'checkpoint_verified': None, 'reasons': []}
+                'checkpoint_verified': None, 'reasons': [], 'checks': {}, 'execution_done': bool(record)}
         if record:
             validation = record.get('validation', {})
             item.update(status=record['execution_status'], attempt=record['attempt'],
@@ -923,6 +964,16 @@ def monitor_snapshot(request):
                         peak_rss_bytes=record['execution'].get('peak_group_rss_bytes'),
                         checkpoint_verified=(record.get('checkpoint') or {}).get('verified'),
                         qor_status=validation.get('qor', {}).get('status'))
+            observations = {}
+            for audit in validation.get('qor', {}).get('audits', []):
+                for report in audit.get('files', []):
+                    for observation in report.get('observations', []):
+                        metric = observation['metric']
+                        if metric in ('drc_count', 'open_net_count'):
+                            observations.setdefault(metric, []).append(dict(observation, report=Path(report['path']).name))
+            for metric, evidence in observations.items():
+                values = {e['value'] for e in evidence}
+                item['checks'][metric] = {'value': next(iter(values)) if len(values) == 1 else None, 'evidence': evidence}
             if validation.get('status') == 'invalid' or item['checkpoint_verified'] is False:
                 item['status'] = 'invalid'
             elif item['status'] == 'completed' and validation.get('status') != 'valid':
@@ -934,7 +985,13 @@ def monitor_snapshot(request):
         selected['stages'].append(item)
     peaks = [s['peak_rss_bytes'] for s in selected['stages'] if s['peak_rss_bytes'] is not None and s['attempt'] == attempt]
     selected['peak_rss_bytes'] = max(peaks) if peaks else None
-    directory = within(run, 'attempts/' + str(attempt))
+    if 'diagnostic_cursors' in request:
+        selected['diagnostic_streams'] = diagnostic_chunks(run, selected['stages'], request['diagnostic_cursors'])
+    log_attempt = request.get('log_attempt') or attempt
+    if isinstance(log_attempt, bool) or not isinstance(log_attempt, int) or log_attempt not in attempts:
+        raise RequestError('Unknown log attempt')
+    selected['log_attempt'] = log_attempt
+    directory = within(run, 'attempts/' + str(log_attempt))
     logs = {p.name: p for p in (directory / 'logs').glob('*.log') if p.is_file() and not p.is_symlink()}
     if (directory / 'worker.log').is_file():
         logs['@worker'] = directory / 'worker.log'
@@ -948,17 +1005,24 @@ def monitor_snapshot(request):
             name = stage_log
         elif logs:
             name = max(logs, key=lambda key: logs[key].stat().st_mtime)
-    selected['log'] = {'name': name, 'text': '', 'total_bytes': 0, 'tail_bytes': 65536}
+    selected['log'] = {'name': name, 'text': '', 'total_bytes': 0, 'tail_bytes': 65536,
+                       'highlight_line': None, 'at_tail': request.get('log_offset') is None}
     if name:
         path = within(directory, logs[name].relative_to(directory).as_posix())
         with path.open('rb') as stream:
             size = os.fstat(stream.fileno()).st_size
-            offset = max(0, size - 65536)
+            target = request.get('log_offset')
+            if target is not None and (isinstance(target, bool) or not isinstance(target, int) or target < 0 or target > size):
+                raise RequestError('Invalid log offset')
+            offset = max(0, target - 16384) if target is not None else max(0, size - 65536)
             stream.seek(offset)
             data = stream.read(65536)
         if offset and b'\n' in data:
-            data = data.split(b'\n', 1)[1]
-        selected['log'].update(text=data.decode('utf-8', errors='replace'), total_bytes=size)
+            first, data = data.split(b'\n', 1)
+            offset += len(first) + 1
+        highlight = data[:target - offset].count(b'\n') if target is not None and offset <= target < offset + len(data) else None
+        selected['log'].update(text=data.decode('utf-8', errors='replace'), total_bytes=size,
+                               window_offset=offset, highlight_line=highlight)
     result['selected'] = selected
     return result
 

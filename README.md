@@ -39,7 +39,7 @@
 python3 tools/eda.py dashboard --profile profiles/machine.local.json
 ```
 
-浏览器打开 `http://localhost:8765/`，可查看任务列表、阶段进度、CPU/内存采样、日志尾部、失败原因和历史 attempt。默认每 5 秒刷新，只读且仅绑定本机；关闭页面或监控服务不会停止后台 EDA 任务。无需额外依赖，详细说明见 [dashboard.md](docs/dashboard.md)。
+浏览器打开 `http://localhost:8765/`，查看串联的工程流程、各阶段 Error/Warning 计数和分布图；按消息代码筛选问题，点击直接定位原始日志行。DRC、open nets、RC 验收与工具消息分别显示，同时保留历史 attempt、CPU/内存和实时日志。默认每 5 秒刷新，只读且仅绑定本机；关闭页面或监控服务不会停止后台 EDA 任务。无需额外依赖，详细说明见 [dashboard.md](docs/dashboard.md)。
 
 ## 本地检查
 

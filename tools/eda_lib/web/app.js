@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const selection = {run_id: '', attempt: '', log: ''};
-let latest = null, busy = false, paused = false, timer = null;
+const selection = {run_id: '', attempt: '', log: '', log_attempt: '', log_offset: ''};
+let latest = null, busy = false, paused = false, timer = null, requestedRefresh = false;
 const statusText = {queued:'排队中',running:'执行中',completed:'已完成',failed:'执行失败',timed_out:'已超时',cancelled:'已取消',interrupted:'执行中断',pending:'等待前序',not_run:'未执行',invalid:'验收未通过',insufficient:'证据不足'};
 const reasonText = {stage_validation_blocked:'阶段验收未通过，后续阶段已停止。',checkpoint_restore_failed:'Checkpoint 重新打开验证失败。',tool_nonzero_exit:'工具以非零退出码结束。',run_budget_exhausted:'剩余预算不足，已停止启动后续阶段。',worker_missing_or_host_restarted:'后台 worker 已退出或执行机已重启。',memory_limit_exceeded:'工具进程组超过配置的内存限制。',cancelled:'任务已取消。',timed_out:'阶段运行超时。'};
 function node(tag, cls, text) { const n=document.createElement(tag); if(cls)n.className=cls; if(text!==undefined)n.textContent=text; return n; }
@@ -25,7 +25,7 @@ function renderList(data) {
   for(const run of runs){
     const button=node('button',`run-button${run.run_id===data.selected?.run_id?' selected':''}`);button.type='button';button.title=run.run_id;button.setAttribute('aria-pressed',String(run.run_id===data.selected?.run_id));
     button.append(node('span','run-id',run.run_id));const row=node('span','run-row');row.append(badge(viewStatus(run)),node('span','run-date',`attempt ${run.attempt}`));button.append(row);
-    button.onclick=()=>{selection.run_id=run.run_id;selection.attempt='';selection.log='';refresh();};list.append(button);
+    button.onclick=()=>{selection.run_id=run.run_id;selection.attempt='';selection.log='';selection.log_attempt='';selection.log_offset='';FlowView.reset();refresh();};list.append(button);
   }
   list.scrollTop=scrollTop;list.scrollLeft=scrollLeft;
 }
@@ -63,22 +63,31 @@ function render(response) {
   $('memory-label').textContent=live?'工具内存 · RSS':'已完成阶段峰值 · RSS';
   $('memory-note').textContent='所属进程组，共享页可能重复计入';
   spark('cpu-chart',resources.history||[],'cpu_percent');spark('memory-chart',resources.history||[],'rss_bytes');
-  $('stages').replaceChildren(...run.stages.map((s,i)=>{
-    const card=node('article','stage'),top=node('div','stage-top');top.append(node('span','stage-num',String(i+1).padStart(2,'0')),badge(s.status));card.append(top,node('div','stage-name',s.id),node('div','stage-tool',s.tool));
-    const notes=[];if(s.wall_seconds!=null)notes.push(duration(s.wall_seconds));if(s.attempt!==run.attempt)notes.push(`沿用 attempt ${s.attempt}`);if(s.checkpoint_verified===true)notes.push('checkpoint 已验证');if(s.checkpoint_verified===false)notes.push('checkpoint 验证失败');if(s.exit_code)notes.push(`exit ${s.exit_code}`);
-    card.append(node('div','stage-bottom',notes.join(' · ')||'—'));return card;
-  }));
+  FlowView.render(run);
   const reasons=[];if(run.reason)reasons.push(reasonText[run.reason]||run.reason);
   for(const s of run.stages)for(const reason of s.reasons)reasons.push(`${s.id}: ${reason}`);
   const unique=[...new Set(reasons)];$('reason-panel').hidden=!unique.length;$('reasons').replaceChildren(...unique.map(reason=>node('p','',reason)));
   const validity={valid:'声明的阶段检查已通过',invalid:'阶段结果无效',insufficient:'验收证据尚不完整'};
   $('validity').textContent=validity[run.result_validity]||'验收状态未知';$('qor').textContent=run.qor_comparable?'QoR manifest 已通过检查':'QoR 可比证据未齐备';
+  syncSelect($('log-attempt'),[['','当前 attempt'],...run.attempts.map(n=>[String(n),`attempt ${n} 日志`])],selection.log_attempt);
   syncSelect($('log-select'),[['','自动选择日志'],...run.logs.map(name=>[name,name==='@worker'?'worker.log':name])],selection.log);
-  const log=run.log;$('log-meta').textContent=`${log.name==='@worker'?'worker.log':log.name||'暂无日志'} · ${log.total_bytes.toLocaleString()} bytes · 仅展示最新 64 KiB`;
-  if($('log').textContent!==(log.text||'暂无日志输出。')){$('log').textContent=log.text||'暂无日志输出。';if($('follow').checked)$('log').scrollTop=$('log').scrollHeight;}
+  const log=run.log;
+  $('log-meta').textContent=`attempt ${run.log_attempt||run.attempt} · ${log.name==='@worker'?'worker.log':log.name||'暂无日志'} · ${log.total_bytes.toLocaleString()} bytes · ${log.at_tail===false?'已定位到消息上下文':'最新 64 KiB'}`;
+  $('log-tail').hidden=log.at_tail!==false;
+  const signature=`${run.log_attempt}:${log.name}:${log.window_offset}:${log.highlight_line}:${log.text}`;
+  if($('log').dataset.signature!==signature){
+    $('log').dataset.signature=signature;
+    if(log.highlight_line!=null){
+      $('log').replaceChildren(...log.text.split('\n').map((line,index)=>node('span',index===log.highlight_line?'log-focus-line':'',line+'\n')));
+      const focus=$('log').querySelector('.log-focus-line');
+      if(focus)$('log').scrollTop=focus.offsetTop-$('log').offsetTop-100;
+    }else{
+      $('log').textContent=log.text||'暂无日志输出。';if($('follow').checked)$('log').scrollTop=$('log').scrollHeight;
+    }
+  }
 }
 async function refresh() {
-  if(busy)return;clearTimeout(timer);busy=true;$('refresh').disabled=true;
+  if(busy){requestedRefresh=true;return;}clearTimeout(timer);busy=true;$('refresh').disabled=true;
   const query=new URLSearchParams();for(const [key,value] of Object.entries(selection))if(value)query.set(key,value);
   const signature=JSON.stringify(selection), controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),70000);
   try{
@@ -86,12 +95,15 @@ async function refresh() {
     if(!result.ok)throw new Error(`监控服务返回 HTTP ${result.status}`);
     const response=await result.json();if(signature===JSON.stringify(selection))render(response);
   }catch(error){if(signature===JSON.stringify(selection))render({connected:false,error:error.message,data:latest?.data||null,last_success_at:latest?.last_success_at||null,refresh_seconds:latest?.refresh_seconds||5});}
-  finally{clearTimeout(timeout);busy=false;$('refresh').disabled=false;if(!paused)timer=setTimeout(refresh,(latest?.refresh_seconds||5)*1000);}
+  finally{clearTimeout(timeout);busy=false;$('refresh').disabled=false;if(requestedRefresh){requestedRefresh=false;timer=setTimeout(refresh,0);}else if(!paused)timer=setTimeout(refresh,(latest?.refresh_seconds||5)*1000);}
 }
 $('refresh').onclick=refresh;
 $('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'恢复刷新':'暂停刷新';if(paused){clearTimeout(timer);if(latest)render(latest);}else refresh();};
 $('filter').onchange=()=>{if(latest?.data)renderList(latest.data);};
-$('attempt').onchange=()=>{selection.run_id=latest?.data?.selected?.run_id||selection.run_id;selection.attempt=$('attempt').value;selection.log='';refresh();};
-$('log-select').onchange=()=>{selection.run_id=latest?.data?.selected?.run_id||selection.run_id;selection.log=$('log-select').value;refresh();};
+$('attempt').onchange=()=>{selection.run_id=latest?.data?.selected?.run_id||selection.run_id;selection.attempt=$('attempt').value;selection.log='';selection.log_attempt='';selection.log_offset='';FlowView.reset();refresh();};
+$('log-select').onchange=()=>{selection.run_id=latest?.data?.selected?.run_id||selection.run_id;selection.log=$('log-select').value;selection.log_offset='';refresh();};
+$('log-attempt').onchange=()=>{selection.log_attempt=$('log-attempt').value;selection.log='';selection.log_offset='';refresh();};
+$('log-tail').onclick=()=>{selection.log_offset='';$('follow').checked=true;refresh();};
 $('copy-log').onclick=async()=>{try{await navigator.clipboard.writeText($('log').textContent);$('copy-log').textContent='已复制';}catch{$('copy-log').textContent='请选中日志复制';}setTimeout(()=>{$('copy-log').textContent='复制';},2000);};
+FlowView.bind();
 refresh();
