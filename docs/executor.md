@@ -2,6 +2,8 @@
 
 `tools/eda.py` 提供 CLI + JSON 接口，调用项目现有的 Tcl 流程。控制端和 Linux worker 都只用 Python 3.6+ 标准库；无需安装 Python 包、MCP 或 skills。读取仓库和运行测试不会启动商业工具。
 
+长任务可另外启动 `python3 tools/eda.py dashboard --profile profiles/machine.local.json`，在本机浏览器监控。这个命令持续提供 HTTP 页面并输出访问地址，遵循 [dashboard.md](dashboard.md)；下文 JSON 请求/退出码约定适用于执行器的其他命令。
+
 ## 先运行合成示例
 
 从仓库根目录执行以下配置生成命令。示例只读写人工构造的 checkpoint，不调用 EDA 工具，也不产生 PPA 数据。

@@ -128,6 +128,11 @@ def extract_collection(result, output, max_bytes):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='action')
+    dashboard = commands.add_parser('dashboard', help='Serve a read-only monitor on localhost')
+    dashboard.add_argument('--profile', required=True)
+    dashboard.add_argument('--port', type=int, default=8765)
+    dashboard.add_argument('--refresh', type=float, default=5)
+    dashboard.add_argument('--request-timeout', type=float, default=15)
     for name in ('preflight', 'submit', 'status', 'logs', 'collect', 'cancel', 'resume'):
         command = commands.add_parser(name)
         command.add_argument('--profile', required=True)
@@ -152,6 +157,10 @@ def main(argv=None):
         request['run_id'] = 'run-' + uuid.uuid4().hex[:16]
     try:
         request['profile'] = json.loads(Path(args.profile).read_text())
+        if args.action == 'dashboard':
+            from eda_lib.dashboard import serve
+            serve(request['profile'], args.port, args.refresh, args.request_timeout)
+            return 0
         if request.get('flow'):
             request['flow'] = json.loads(Path(args.flow).read_text())
         response = call(request)

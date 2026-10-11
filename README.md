@@ -33,6 +33,14 @@
 
 先用 [纯模拟示例](flows/minimal.json) 验证接口；商业流程按 [DC → ICC2 → PrimeTime 清单](flows/dc-icc2-pt.example.json) 接入已有 Tcl。工作目录隔离需要检查项目脚本的输出路径。执行状态、报告有效性和 QoR 可比性分别记录，失败阶段会阻断下游。
 
+### 本机监控 dashboard
+
+```bash
+python3 tools/eda.py dashboard --profile profiles/machine.local.json
+```
+
+浏览器打开 `http://localhost:8765/`，可查看任务列表、阶段进度、CPU/内存采样、日志尾部、失败原因和历史 attempt。默认每 5 秒刷新，只读且仅绑定本机；关闭页面或监控服务不会停止后台 EDA 任务。无需额外依赖，详细说明见 [dashboard.md](docs/dashboard.md)。
+
 ## 本地检查
 
 Python 3.6+，只使用标准库：

@@ -842,10 +842,133 @@ def collect(run, state, include_checkpoints, limit):
     return {'run_id': state['run_id'], 'files': inventory, 'archive_base64': base64.b64encode(data.getvalue()).decode('ascii')}
 
 
+def monitor_metrics(token):
+    members = group_members(token)
+    cpu_seconds, rss = 0.0, 0
+    for member in members:
+        try:
+            raw = Path('/proc/{}/stat'.format(member['pid'])).read_text()
+            fields = raw[raw.rfind(')') + 2:].split()
+            cpu_seconds += (int(fields[11]) + int(fields[12])) / float(os.sysconf('SC_CLK_TCK'))
+            for line in Path('/proc/{}/status'.format(member['pid'])).read_text().splitlines():
+                if line.startswith('VmRSS:'):
+                    rss += int(line.split()[1]) * 1024
+        except (OSError, ValueError, IndexError):
+            continue
+    return {'sample_time': time.time(), 'rss_bytes': rss if members else None,
+            'cpu_seconds': cpu_seconds if members else None, 'process_count': len(members),
+            'process_key': '{}:{}'.format(token['pid'], token['start_ticks']) if token and members else None}
+
+
+def monitor_state(path):
+    """Reconcile a view in memory only; monitoring must not rewrite worker state."""
+    state = load(path)
+    if state['status'] in ACTIVE and not alive(state.get('worker')):
+        state.update(status='interrupted', result_validity='insufficient', pipeline_complete=False,
+                     reason='worker_missing_or_host_restarted')
+    return state
+
+
+def monitor_summary(state):
+    fields = ('run_id', 'attempt', 'status', 'current_stage', 'result_validity', 'pipeline_complete',
+              'qor_comparable', 'created_at', 'started_at', 'finished_at', 'updated_at', 'reason')
+    return {name: state.get(name) for name in fields}
+
+
+def monitor_snapshot(request):
+    root = Path(request['profile']['run_root'])
+    if not root.is_absolute():
+        raise RequestError('run_root must be absolute')
+    paths = sorted((p for p in root.glob('*/state.json') if not p.parent.is_symlink()),
+                   key=lambda p: p.stat().st_mtime, reverse=True)[:200]
+    states, unreadable = [], 0
+    for path in paths:
+        try:
+            identifier(path.parent.name)
+            states.append(monitor_state(path))
+        except (OSError, ValueError, KeyError, TypeError, RequestError):
+            unreadable += 1
+    states.sort(key=lambda s: (s['status'] in ACTIVE, s.get('created_at', '')), reverse=True)
+    result = {'sampled_at': now(), 'runs': [monitor_summary(s) for s in states],
+              'unreadable_runs': unreadable, 'run_limit': 200, 'selected': None,
+              'host': {'cpu_count': os.cpu_count(), 'available_memory_gib': available_memory()}}
+    run_id = request.get('run_id') or (states[0]['run_id'] if states else None)
+    if not run_id:
+        return result
+    run = within(root, identifier(run_id))
+    state = monitor_state(run / 'state.json')
+    attempts = sorted(int(p.name) for p in (run / 'attempts').iterdir()
+                      if p.name.isdigit() and not p.is_symlink() and (p / 'state.json').is_file())
+    attempt = request.get('attempt') or state['attempt']
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt not in attempts:
+        raise RequestError('Unknown attempt')
+    if attempt != state['attempt']:
+        state = load(run / 'attempts' / str(attempt) / 'state.json')
+    saved = load(run / 'request.json')
+    selected = monitor_summary(state)
+    selected.update(attempts=attempts, stages=[], budget_seconds=saved['flow']['budget_seconds'],
+                    resources=monitor_metrics(state.get('tool_process')))
+    records = {s['id']: s for s in state.get('stages', [])}
+    for spec in saved['flow']['stages']:
+        record = records.get(spec['id'])
+        item = {'id': spec['id'], 'tool': spec.get('tool', 'command'), 'status': 'pending',
+                'attempt': attempt, 'wall_seconds': None, 'peak_rss_bytes': None,
+                'checkpoint_verified': None, 'reasons': []}
+        if record:
+            validation = record.get('validation', {})
+            item.update(status=record['execution_status'], attempt=record['attempt'],
+                        validity=validation.get('status'), reasons=validation.get('reasons', []),
+                        wall_seconds=record['execution'].get('wall_seconds'),
+                        exit_code=record['execution'].get('exit_code'),
+                        peak_rss_bytes=record['execution'].get('peak_group_rss_bytes'),
+                        checkpoint_verified=(record.get('checkpoint') or {}).get('verified'),
+                        qor_status=validation.get('qor', {}).get('status'))
+            if validation.get('status') == 'invalid' or item['checkpoint_verified'] is False:
+                item['status'] = 'invalid'
+            elif item['status'] == 'completed' and validation.get('status') != 'valid':
+                item['status'] = 'insufficient'
+        if spec['id'] == state.get('current_stage') and state['status'] == 'running':
+            item['status'] = 'running'
+        elif not record and state['status'] not in ACTIVE:
+            item['status'] = 'not_run'
+        selected['stages'].append(item)
+    peaks = [s['peak_rss_bytes'] for s in selected['stages'] if s['peak_rss_bytes'] is not None and s['attempt'] == attempt]
+    selected['peak_rss_bytes'] = max(peaks) if peaks else None
+    directory = within(run, 'attempts/' + str(attempt))
+    logs = {p.name: p for p in (directory / 'logs').glob('*.log') if p.is_file() and not p.is_symlink()}
+    if (directory / 'worker.log').is_file():
+        logs['@worker'] = directory / 'worker.log'
+    selected['logs'] = sorted(logs)
+    name = request.get('log')
+    if name and name not in logs:
+        raise RequestError('Unknown log')
+    if not name:
+        stage_log = str(state.get('current_stage')) + '.log'
+        if state['status'] not in ACTIVE and stage_log in logs and state.get('reason') != 'checkpoint_restore_failed':
+            name = stage_log
+        elif logs:
+            name = max(logs, key=lambda key: logs[key].stat().st_mtime)
+    selected['log'] = {'name': name, 'text': '', 'total_bytes': 0, 'tail_bytes': 65536}
+    if name:
+        path = within(directory, logs[name].relative_to(directory).as_posix())
+        with path.open('rb') as stream:
+            size = os.fstat(stream.fileno()).st_size
+            offset = max(0, size - 65536)
+            stream.seek(offset)
+            data = stream.read(65536)
+        if offset and b'\n' in data:
+            data = data.split(b'\n', 1)[1]
+        selected['log'].update(text=data.decode('utf-8', errors='replace'), total_bytes=size)
+    result['selected'] = selected
+    return result
+
+
 def dispatch(request):
     if sys.platform != 'linux':
         raise RequestError('Execution endpoint must run on Linux')
     action, profile = request['action'], request['profile']
+    if action == 'monitor':
+        return monitor_snapshot(request)
     if action == 'preflight':
         return preflight(profile, request['flow'])
     if action == 'submit':

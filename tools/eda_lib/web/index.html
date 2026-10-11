@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EDA Agent · 运行监控</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-icon" aria-hidden="true">▦</span><div><strong>EDA Agent</strong><span class="brand-caption">运行监控 / RUN MONITOR</span></div></div>
+    <div class="top-controls"><span class="local-tag">本机 · 只读</span><span id="connection" class="connection waiting" role="status">连接中</span><button id="refresh" class="button" type="button">刷新</button><button id="pause" class="button secondary" type="button">暂停刷新</button></div>
+  </header>
+  <div id="connection-error" class="connection-error" role="alert" hidden></div>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="section-heading"><h2>任务队列</h2><span id="run-count" class="count">—</span></div>
+      <label class="sr-only" for="filter">筛选任务</label>
+      <select id="filter"><option value="all">全部运行</option><option value="active">正在执行 / 排队</option><option value="issues">失败 / 验收未通过</option><option value="done">已通过阶段检查</option></select>
+      <div id="run-list" class="run-list" aria-label="运行任务列表"></div>
+      <div class="sidebar-footer"><span class="eyebrow">EXECUTION HOST</span><p id="host">等待执行端响应</p><p id="last-refresh">每 5 秒自动刷新</p><p>仅显示执行器管理的任务</p></div>
+    </aside>
+    <main>
+      <section id="empty" class="empty"><span class="empty-symbol" aria-hidden="true">▦</span><h1>等待运行数据</h1><p id="empty-message">正在连接执行端，读取任务状态。</p><code>python3 tools/eda.py submit --profile … --flow …</code></section>
+      <div id="detail" hidden>
+        <section class="run-heading">
+          <div><div class="eyebrow">RUN OVERVIEW</div><h1 id="run-title"></h1><p id="run-meta" class="muted"></p></div>
+          <div class="run-heading-controls"><span id="run-status" class="badge"></span><label for="attempt">执行记录</label><select id="attempt" aria-label="选择执行记录"></select></div>
+        </section>
+        <section class="metrics" aria-label="运行指标">
+          <article class="metric"><span class="metric-label">当前阶段</span><strong id="current-stage" class="stage-value">—</strong><span id="stage-progress" class="metric-note">等待执行</span></article>
+          <article class="metric"><span class="metric-label">本次耗时</span><strong id="elapsed">—</strong><span id="budget" class="metric-note">—</span></article>
+          <article class="metric"><span class="metric-label">工具 CPU</span><strong id="cpu">—</strong><span id="cpu-note" class="metric-note">100% 对应一个逻辑核</span><svg class="spark cpu" viewBox="0 0 240 36" preserveAspectRatio="none" aria-label="CPU 采样趋势"><polyline id="cpu-chart" points=""></polyline></svg></article>
+          <article class="metric"><span id="memory-label" class="metric-label">工具内存 · RSS</span><strong id="memory">—</strong><span id="memory-note" class="metric-note">所属进程组，近似值</span><svg class="spark memory" viewBox="0 0 240 36" preserveAspectRatio="none" aria-label="内存采样趋势"><polyline id="memory-chart" points=""></polyline></svg></article>
+        </section>
+        <section class="panel stages-panel"><div class="panel-heading"><h2>阶段进度</h2><span class="muted">按实际阶段验收显示</span></div><div id="stages" class="stages"></div></section>
+        <section id="reason-panel" class="reason-panel" hidden><strong>需要关注</strong><div id="reasons"></div></section>
+        <section class="evidence-strip"><div><span id="validity" class="evidence-label">—</span><span id="qor" class="evidence-label">—</span></div><p>阶段检查通过不代表 signoff；QoR 比较还需要完整且一致的分析口径。</p></section>
+        <section class="panel log-panel">
+          <div class="panel-heading log-heading"><div><h2>运行日志</h2><span id="log-meta" class="muted">最新尾部 · 最大 64 KiB</span></div><div class="log-controls"><label class="sr-only" for="log-select">选择日志</label><select id="log-select"></select><label class="follow"><input id="follow" type="checkbox" checked> 跟随日志</label><button id="copy-log" class="button secondary" type="button">复制</button></div></div>
+          <pre id="log" tabindex="0" aria-label="日志内容">等待日志…</pre>
+        </section>
+      </div>
+      <footer class="main-footer"><span>DC · ICC2 · PrimeTime</span><span>关闭此页面不会停止 EDA 任务</span></footer>
+    </main>
+  </div>
+</body>
+</html>
