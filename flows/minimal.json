@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "isolation": "reviewed_run_directory",
+  "budget_seconds": 30,
+  "inputs": [
+    {
+      "source": "demo.py",
+      "destination": "demo.py"
+    }
+  ],
+  "stages": [
+    {
+      "id": "prepare",
+      "tool": "command",
+      "argv": [
+        "{python}",
+        "demo.py",
+        "prepare"
+      ],
+      "timeout_seconds": 10,
+      "success_pattern": "^DEMO_PREPARED$",
+      "outputs": [
+        {
+          "path": "demo_state.json",
+          "kind": "checkpoint"
+        },
+        {
+          "path": "prepare.rpt",
+          "kind": "report"
+        }
+      ],
+      "checkpoint": {
+        "paths": [
+          "demo_state.json"
+        ],
+        "restore_probe": {
+          "argv": [
+            "{python}",
+            "demo.py",
+            "restore"
+          ],
+          "timeout_seconds": 10,
+          "success_pattern": "^DEMO_RESTORED$"
+        }
+      }
+    },
+    {
+      "id": "analyze",
+      "tool": "command",
+      "argv": [
+        "{python}",
+        "demo.py",
+        "analyze"
+      ],
+      "timeout_seconds": 10,
+      "success_pattern": "^DEMO_ANALYZED$",
+      "outputs": [
+        {
+          "path": "analysis.rpt",
+          "kind": "report"
+        }
+      ]
+    }
+  ]
+}

@@ -4,6 +4,10 @@ Discover the target project's existing setup before proposing a command. Record 
 
 The repository's `profiles/local.example.json` lists useful environment fields. Actual values belong in an ignored `profiles/*.local.json` file or in the user's project. Skills do not automatically load or execute profiles.
 
+When working from this repository, use the optional [CLI executor](../../../docs/executor.md) for an authorized existing-flow run. It provides preflight, detached submission, status, incremental logs, collection, cancellation and checkpoint resume. The helper lives at repository `tools/eda.py`; an individually installed skill must first locate that checkout or use the project's existing runner. Do not assume the helper is installed with the skill.
+
+After a transport failure, query the same run ID before retrying. Resume retains earlier attempts and rejects changed inputs/configuration. Inspect both execution status and result validity; `completed` can still mean a validation failure stopped the pipeline, and an accepted stage without a full normalized manifest is not a comparable QoR sample.
+
 ## Remote execution
 
 Use the transport already working for the project. For Windows-hosted VMs accessed through WSL, Windows OpenSSH can be a fallback if direct WSL SSH is unreliable. Inspect existing wrappers, quote paths and arguments, and use unique task/run directories. Avoid embedding credentials in files or logs. A transport problem is separate from an EDA-tool failure.

@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "isolation": "reviewed_run_directory",
+  "budget_seconds": 1800,
+  "inputs": [
+    {
+      "source": "rtl",
+      "destination": "rtl"
+    },
+    {
+      "source": "constraints",
+      "destination": "constraints"
+    },
+    {
+      "source": "scripts",
+      "destination": "scripts"
+    }
+  ],
+  "external_inputs": [
+    "/path/to/read-only/timing-library.db",
+    "/path/to/read-only/physical-library.ndm",
+    "/path/to/read-only/technology.tf",
+    "/path/to/read-only/rc-table.tluplus"
+  ],
+  "stages": [
+    {
+      "id": "synthesis",
+      "tool": "dc_shell",
+      "argv": [
+        "{tool:dc_shell}",
+        "-f",
+        "scripts/synthesis.tcl"
+      ],
+      "timeout_seconds": 360,
+      "success_pattern": "^DC_MAPPING_PASS$",
+      "outputs": [
+        {
+          "path": "results/synthesis.ddc",
+          "kind": "checkpoint"
+        },
+        {
+          "path": "results/synthesis.v",
+          "kind": "artifact"
+        },
+        {
+          "path": "results/synthesis.sdc",
+          "kind": "artifact"
+        },
+        {
+          "path": "reports/synthesis",
+          "kind": "report"
+        }
+      ],
+      "checkpoint": {
+        "paths": [
+          "results/synthesis.ddc",
+          "results/synthesis.v",
+          "results/synthesis.sdc"
+        ],
+        "restore_probe": {
+          "argv": [
+            "{tool:dc_shell}",
+            "-f",
+            "scripts/restore_dc.tcl"
+          ],
+          "timeout_seconds": 120,
+          "success_pattern": "^RESTORE_DC_PASS$"
+        }
+      }
+    },
+    {
+      "id": "route",
+      "tool": "icc2_shell",
+      "argv": [
+        "{tool:icc2_shell}",
+        "-f",
+        "scripts/route.tcl"
+      ],
+      "timeout_seconds": 720,
+      "success_pattern": "^ROUTE_COMPLETE$",
+      "outputs": [
+        {
+          "path": "results/route.ndm",
+          "kind": "checkpoint"
+        },
+        {
+          "path": "results/route.v",
+          "kind": "artifact"
+        },
+        {
+          "path": "results/route.sdc",
+          "kind": "artifact"
+        },
+        {
+          "path": "results/route.spef",
+          "kind": "artifact"
+        },
+        {
+          "path": "reports/route",
+          "kind": "report"
+        }
+      ],
+      "checkpoint": {
+        "paths": [
+          "results/route.ndm",
+          "results/route.v",
+          "results/route.sdc",
+          "results/route.spef"
+        ],
+        "restore_probe": {
+          "argv": [
+            "{tool:icc2_shell}",
+            "-f",
+            "scripts/restore_icc2.tcl"
+          ],
+          "timeout_seconds": 120,
+          "success_pattern": "^RESTORE_ICC2_PASS$"
+        }
+      }
+    },
+    {
+      "id": "timing",
+      "tool": "pt_shell",
+      "argv": [
+        "{tool:pt_shell}",
+        "-f",
+        "scripts/timing.tcl"
+      ],
+      "timeout_seconds": 240,
+      "success_pattern": "^PT_TIMING_PASS$",
+      "outputs": [
+        {
+          "path": "results/timing.session",
+          "kind": "checkpoint"
+        },
+        {
+          "path": "reports/timing",
+          "kind": "report"
+        },
+        {
+          "path": "qor.json",
+          "kind": "artifact"
+        }
+      ],
+      "checkpoint": {
+        "paths": [
+          "results/timing.session",
+          "results/route.v",
+          "results/route.sdc",
+          "results/route.spef"
+        ],
+        "restore_probe": {
+          "argv": [
+            "{tool:pt_shell}",
+            "-f",
+            "scripts/restore_pt.tcl"
+          ],
+          "timeout_seconds": 120,
+          "success_pattern": "^RESTORE_PT_PASS$"
+        }
+      },
+      "qor_manifest": "qor.json"
+    }
+  ]
+}

@@ -1,23 +1,17 @@
 {
-  "status": "example_only_not_executable",
+  "version": 1,
+  "project_root": "/absolute/path/to/eda_agent/examples/minimal-flow",
+  "run_root": "/absolute/path/to/private/eda-runs",
   "transport": {
-    "type": "ssh",
-    "host": null,
-    "user": null,
-    "project_root": null
+    "type": "local",
+    "request_timeout_seconds": 120
   },
-  "tools": {
-    "dc_shell": null,
-    "icc2_shell": null,
-    "pt_shell": null
-  },
+  "tools": {},
+  "env": {},
   "resources": {
     "max_concurrent_heavy_jobs": 1,
-    "threads_per_job": null,
+    "threads_per_job": 4,
+    "min_free_memory_gib": 0,
     "memory_limit_gib": null
-  },
-  "policy": {
-    "guest_public_internet_allowed": false,
-    "skills_install_by_default": false
   }
 }

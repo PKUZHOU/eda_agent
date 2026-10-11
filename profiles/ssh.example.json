@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "project_root": "/path/on/linux-host/reviewed-project",
+  "run_root": "/path/on/linux-host/eda-runs",
+  "transport": {
+    "type": "ssh",
+    "host": "user@eda-host",
+    "python": "/usr/bin/python3",
+    "port": 22,
+    "request_timeout_seconds": 120
+  },
+  "tools": {
+    "dc_shell": "/path/to/dc_shell",
+    "icc2_shell": "/path/to/icc2_shell",
+    "pt_shell": "/path/to/pt_shell"
+  },
+  "env": {},
+  "resources": {
+    "max_concurrent_heavy_jobs": 1,
+    "threads_per_job": 4,
+    "min_free_memory_gib": 4,
+    "memory_limit_gib": null
+  }
+}

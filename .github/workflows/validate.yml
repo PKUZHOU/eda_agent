@@ -17,5 +17,5 @@ jobs:
           python-version: '3.11'
       - name: Validate candidate skills
         run: python3 tools/validate_skills.py
-      - name: Test QoR handling with synthetic fixtures
+      - name: Test QoR and detached execution with synthetic tools
         run: python3 -m unittest discover -s tests -v

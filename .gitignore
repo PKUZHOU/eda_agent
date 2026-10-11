@@ -8,6 +8,10 @@ __pycache__/
 profiles/*.local.json
 profiles/*.local.yaml
 profiles/*.local.yml
+*.local.json
+*.local.yaml
+*.local.yml
+*.local.env
 runs/
 reports/
 artifacts/

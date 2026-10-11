@@ -25,7 +25,13 @@
 2. **真实流程可运行性**：使用匹配的工具版本、库、约束、物理视图和 RC 数据；checkpoint 能恢复。
 3. **优化收益**：在固定口径下比较候选，经过等价检查和必要的完整 P&R/PrimeTime 复核，并保存失败实验。
 
-本仓库的自动测试只覆盖第一项的部分行为。安装应在用户明确提出后单独执行。
+自动测试覆盖报告检查和执行器的故障/恢复行为；真实工具验收范围见 [validation.md](docs/validation.md)。安装应在用户明确提出后单独执行。
+
+## 执行现有工程
+
+新增 [CLI 执行器](docs/executor.md)：`preflight / submit / status / logs / collect / cancel / resume`，支持 Linux 本地、SSH、WSL 调用 Windows OpenSSH。后台 worker 在 SSH 断线后继续运行；每个运行根目录同一时间只执行一个重任务，保存输入指纹、阶段输出和经过原生恢复探测的 checkpoint。
+
+先用 [纯模拟示例](flows/minimal.json) 验证接口；商业流程按 [DC → ICC2 → PrimeTime 清单](flows/dc-icc2-pt.example.json) 接入已有 Tcl。工作目录隔离需要检查项目脚本的输出路径。执行状态、报告有效性和 QoR 可比性分别记录，失败阶段会阻断下游。
 
 ## 本地检查
 
@@ -54,7 +60,7 @@ python3 skills/eda-qor-experiments/scripts/qor.py compare baseline.json candidat
 
 ## 环境与数据
 
-[profiles/local.example.json](profiles/local.example.json) 是机器配置字段示例。实际配置可保存在被 Git 忽略的 `profiles/machine.local.json`。技能不会自动连接这些地址或执行配置。
+[profiles/local.example.json](profiles/local.example.json) 和 [SSH 配置](profiles/ssh.example.json) 是执行器 v1 的字段示例，需要填写实际执行端路径。真实配置保存在被 Git 忽略的 `profiles/machine.local.json`。只有显式调用执行器才会读取配置并连接。
 
 真实 RTL、PDK、标准单元库、license、工具数据库和工程报告应保留在各自工程中。仓库内测试使用人工构造的数据，便于在没有商业工具的环境中运行。
 
@@ -78,4 +84,4 @@ python3 skills/eda-qor-experiments/scripts/qor.py compare baseline.json candidat
 
 参考仓库固定到核查时的提交，具体 skill 文件、提交链接和适配边界见 [sources.md](skills/eda-qor-experiments/references/sources.md)。后续若新增参考或实际移植代码，应同时记录对应来源、版本和改动；移植代码需保留适用的原始署名与许可信息。
 
-当前实现包括候选技能说明、报告审计和可比条件下的 QoR 差值计算。跨阶段搜索、经验学习等内容目前属于流程指导，尚未通过真实设计证明 PPA 收益。新增规则应附适用条件、证据和反例；方法说明、流程运行成功与 PPA 改善分别记录。
+当前实现包括候选技能、现有 Tcl 流程执行器、报告审计和可比条件下的 QoR 差值计算。跨阶段搜索、经验学习等内容目前属于流程指导，尚未通过真实设计证明 PPA 收益。新增规则应附适用条件、证据和反例；方法说明、流程运行成功与 PPA 改善分别记录。
