@@ -60,6 +60,22 @@ python3 skills/eda-qor-experiments/scripts/qor.py compare baseline.json candidat
 
 ## 方法与来源
 
-参考了 AstroTune 的跨阶段候选保留、HiPilot 的 checkpoint/QoR 工作流和 digital-chip-design-agents 的阶段组织。Dr. RTL 的报告反馈与经验记录方法作为补充；本版范围固定 RTL。具体版本及适配边界见 [sources.md](skills/eda-qor-experiments/references/sources.md)。
+感谢以下项目和论文提供的方法与工作流参考。这里按具体借鉴内容说明来源；各项目的实验结果属于各自的工具、工艺和设计条件，本仓库的优化效果需要独立验证。
 
-当前不包含贝叶斯优化器、AST 检索服务或已经证明有效的调参配置。新增规则应附适用条件、证据和反例；方法说明、流程运行成功与 PPA 改善分别记录。
+| 参考来源 | 借鉴内容 | 本仓库中的体现与当前状态 |
+|---|---|---|
+| **[AstroTune](https://jpan.me/files/ISPD26_AstroTune.pdf)**，ISPD 2026 | 从相似设计经验形成起点；分阶段保留、向后传递并淘汰多个候选 | 写入 `eda-qor-experiments` 的实验设计与候选筛选指导；AST 检索和贝叶斯优化器尚未实现。论文使用 DC＋Innovus，其参数需要针对 ICC2 重新核实。 |
+| **[HiPilot](https://github.com/qfliuyang/hipilot)** | 工具执行、checkpoint、报告收集和 QoR 对比的工作流 | 用于组织实验记录、恢复点和指标比较；本仓库的辅助脚本独立编写，上游 MCP 服务与执行器未集成。 |
+| **[digital-chip-design-agents](https://github.com/hdl-tools/digital-chip-design-agents)** | 综合、物理设计和 STA 的阶段组织、检查项与经验记录 | 参考其职责划分，形成 DC、ICC2、PrimeTime 三个阶段技能；工艺角、约束和 Tcl 命令要求以实际工程为准。 |
+| **[Dr. RTL](https://github.com/hkust-zhiyao/DR_RTL)** | 根据时序报告提出优化假设，用工具验证结果，并从实验中提炼经验 | 用于报告反馈与经验记录指导；本版固定 RTL，RTL 重写及其搜索流程不在当前实现范围内。 |
+
+### 论文引用
+
+1. Runzhi Wang, Jingyu Pan, Yiran Chen, Jiang Hu. **AstroTune: AST-Assisted LLM Retrieval for Cross-Stage Design Flow Parameter Tuner.** ISPD 2026. [论文 PDF](https://jpan.me/files/ISPD26_AstroTune.pdf) · [DOI: 10.1145/3764386.3779579](https://doi.org/10.1145/3764386.3779579)。
+2. Wenji Fang et al. **Dr. RTL: Autonomous Agentic RTL Optimization through Tool-Grounded Self-Improvement.** 2026. [arXiv:2604.14989v2](https://arxiv.org/abs/2604.14989v2)。
+
+### 版本与适配记录
+
+参考仓库固定到核查时的提交，具体 skill 文件、提交链接和适配边界见 [sources.md](skills/eda-qor-experiments/references/sources.md)。后续若新增参考或实际移植代码，应同时记录对应来源、版本和改动；移植代码需保留适用的原始署名与许可信息。
+
+当前实现包括候选技能说明、报告审计和可比条件下的 QoR 差值计算。跨阶段搜索、经验学习等内容目前属于流程指导，尚未通过真实设计证明 PPA 收益。新增规则应附适用条件、证据和反例；方法说明、流程运行成功与 PPA 改善分别记录。
