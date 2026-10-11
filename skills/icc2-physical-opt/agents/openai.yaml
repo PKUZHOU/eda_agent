@@ -1,0 +1,4 @@
+interface:
+  display_name: "icc2-physical-opt"
+  short_description: "Evidence-based commercial EDA optimization workflow"
+  default_prompt: "Use $icc2-physical-opt to inspect the current design and propose a verified optimization experiment."

@@ -1,0 +1,1 @@
+Artificial report snippets for parser behavior tests. These files were written for this repository and were not produced by a licensed EDA run. Numbers and design names are synthetic. They do not demonstrate tool availability, flow completion or PPA results.

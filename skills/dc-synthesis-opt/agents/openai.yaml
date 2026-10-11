@@ -1,0 +1,4 @@
+interface:
+  display_name: "dc-synthesis-opt"
+  short_description: "Evidence-based commercial EDA optimization workflow"
+  default_prompt: "Use $dc-synthesis-opt to inspect the current design and propose a verified optimization experiment."

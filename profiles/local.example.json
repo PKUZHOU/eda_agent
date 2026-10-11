@@ -1,0 +1,23 @@
+{
+  "status": "example_only_not_executable",
+  "transport": {
+    "type": "ssh",
+    "host": null,
+    "user": null,
+    "project_root": null
+  },
+  "tools": {
+    "dc_shell": null,
+    "icc2_shell": null,
+    "pt_shell": null
+  },
+  "resources": {
+    "max_concurrent_heavy_jobs": 1,
+    "threads_per_job": null,
+    "memory_limit_gib": null
+  },
+  "policy": {
+    "guest_public_internet_allowed": false,
+    "skills_install_by_default": false
+  }
+}

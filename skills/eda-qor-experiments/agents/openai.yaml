@@ -1,0 +1,4 @@
+interface:
+  display_name: "eda-qor-experiments"
+  short_description: "Evidence-based commercial EDA optimization workflow"
+  default_prompt: "Use $eda-qor-experiments to inspect the current design and propose a verified optimization experiment."

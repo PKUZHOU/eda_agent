@@ -1,0 +1,4 @@
+interface:
+  display_name: "primetime-signoff"
+  short_description: "Evidence-based commercial EDA optimization workflow"
+  default_prompt: "Use $primetime-signoff to inspect the current design and propose a verified optimization experiment."

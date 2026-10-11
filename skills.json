@@ -1,0 +1,27 @@
+{
+  "default_install": false,
+  "optimization_scope": "fixed_rtl",
+  "ppa_benefit_verified": false,
+  "skills": [
+    {
+      "name": "dc-synthesis-opt",
+      "path": "skills/dc-synthesis-opt",
+      "status": "candidate"
+    },
+    {
+      "name": "eda-qor-experiments",
+      "path": "skills/eda-qor-experiments",
+      "status": "candidate"
+    },
+    {
+      "name": "icc2-physical-opt",
+      "path": "skills/icc2-physical-opt",
+      "status": "candidate"
+    },
+    {
+      "name": "primetime-signoff",
+      "path": "skills/primetime-signoff",
+      "status": "candidate"
+    }
+  ]
+}

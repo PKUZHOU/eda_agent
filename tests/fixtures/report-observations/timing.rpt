@@ -1,0 +1,5 @@
+Report : timing
+ -max_paths 5
+Warning: no valid parasitic for default corner
+Warning: The extractor can not be initialized. Zero interconnect delay is used in timing analysis.
+slack (MET) 0.59
